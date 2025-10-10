@@ -4,16 +4,11 @@ import {ok} from 'node:assert'
 import {getHooks as getBaseHooks} from '@diplodoc/cli/lib/program'
 import {getHooks as getTocHooks} from '@diplodoc/cli/lib/toc'
 import {getBuildHooks, getEntryHooks, getSearchHooks} from '@diplodoc/cli'
-import {isExternalHref, setExt} from '@diplodoc/cli/lib/utils'
-import {join} from "node:path";
-
-type CleanLinksOptions = {
-    ext: boolean
-    index: boolean
-}
+import {isExternalHref, setExt, shortLink} from '@diplodoc/cli/lib/utils'
+import {join} from "node:path"
 
 type ConfigWithCleanLinks = BaseConfig & {
-    cleanLinks: boolean | CleanLinksOptions
+    cleanLinks: boolean
 }
 
 type Indexer = {
@@ -22,8 +17,6 @@ type Indexer = {
 
 type BreadcrumbsItem = {url?: string}
 
-const cleanExtExp = /\.html/
-const cleanIndexExp = /\/index/
 const htmlLinkExp = /href="(.*?)"/
 
 export class Extension implements IExtension {
@@ -33,12 +26,9 @@ export class Extension implements IExtension {
                 return config
             }
 
-            ok((config.cleanLinks === true || "object" === typeof config.cleanLinks), 'cleanLinks must be object or true')
-
             const options = Object.assign({}, {ext: true, index: true}, config.cleanLinks)
 
-            ok("boolean" === typeof options.ext, 'breadcrumbs.tocAsRoot must be boolean type')
-            ok("boolean" === typeof options.index, 'breadcrumbs.appendLabeled must be boolean type')
+            ok("boolean" === typeof config.cleanLinks, 'cleanLinks must be boolean type')
 
             config.cleanLinks = options
 
@@ -50,12 +40,10 @@ export class Extension implements IExtension {
                 return
             }
 
-            const options = program.config.cleanLinks as CleanLinksOptions
-
             getTocHooks(run.toc).Dump.tapPromise('CleanLinks', async (vfile) => {
                 await run.toc.walkItems([vfile.data as Toc], async (item: Toc | TocItem) => {
                     if (item.href && !isExternalHref(item.href)) {
-                        item.href = cleanLink(item.href, program.config.cleanLinks as CleanLinksOptions)
+                        item.href = shortLink(item.href)
                     }
 
                     return item
@@ -64,18 +52,18 @@ export class Extension implements IExtension {
 
             getEntryHooks(run.entry).State.tap('CleanLinks', (state) => {
                 if (state.data.html) {
-                    state.data.html = cleanHtmlLinks(state.data.html, options)
+                    state.data.html = cleanHtmlLinks(state.data.html)
                 }
 
                 if (state.data.breadcrumbs) {
                     (state.data.breadcrumbs as BreadcrumbsItem[]).forEach(breadcrumbItem => {
                         if (breadcrumbItem.url) {
-                            breadcrumbItem.url = cleanLink(breadcrumbItem.url, options)
+                            breadcrumbItem.url = shortLink(breadcrumbItem.url)
                         }
                     })
                 }
 
-                state.router.pathname = cleanLink(state.router.pathname, options)
+                state.router.pathname = shortLink(state.router.pathname)
 
                 return state
             })
@@ -107,7 +95,7 @@ export class Extension implements IExtension {
                     const indexer = provider.indexer as Indexer
                     const ownAddMethod = indexer.add
 
-                    indexer.add = async (lang, url, data) => ownAddMethod.call(indexer, lang, cleanLink(url, options), data)
+                    indexer.add = async (lang, url, data) => ownAddMethod.call(indexer, lang, shortLink(url), data)
                 }
 
                 return provider
@@ -133,18 +121,6 @@ export class Extension implements IExtension {
     }
 }
 
-function cleanHtmlLinks(html: string, options: CleanLinksOptions) {
-    return html.replace(htmlLinkExp, (match, href) => match.replace(href, cleanLink(href, options)))
-}
-
-function cleanLink(url: string, options: CleanLinksOptions) {
-    if (options.ext) {
-        url = url.replace(cleanExtExp, '')
-    }
-
-    if (options.index) {
-        url = url.replace(cleanIndexExp, '')
-    }
-
-    return url
+function cleanHtmlLinks(html: string) {
+    return html.replace(htmlLinkExp, (match, href) => match.replace(href, shortLink(href)))
 }

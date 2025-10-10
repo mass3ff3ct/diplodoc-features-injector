@@ -25,8 +25,15 @@ class Extension {
             }
             const tocService = run.toc;
             const breadcrumbCacheMap = new Map();
+            let skipHtmlExtension = false;
+            if ("skipHtmlExtension" in program.config && program.config.skipHtmlExtension !== false) {
+                skipHtmlExtension = true;
+            }
+            if ("cleanLinks" in program.config && program.config.cleanLinks !== false) {
+                skipHtmlExtension = true;
+            }
             (0, cli_1.getEntryHooks)(run.entry).State.tap('Breadcrumbs', (state) => {
-                const toc = tocService.for(state.router.pathname);
+                const toc = tocService.for(state.data.meta.vcsPath);
                 if (!toc.items || toc.items.length === 0) {
                     return state;
                 }
@@ -36,10 +43,16 @@ class Extension {
                 if (!breadcrumbsMap.has(pathname)) {
                     return state;
                 }
-                state.data.breadcrumbs = breadcrumbsMap.get(pathname)
-                    .map(item => item.url && !(0, utils_1.isExternalHref)(item.url)
-                    ? { ...item, url: (0, node_path_1.join)(rootPath, item.url) + '.html' }
-                    : item);
+                state.data.breadcrumbs = breadcrumbsMap.get(pathname).map(item => {
+                    if (!item.url || (0, utils_1.isExternalHref)(item.url)) {
+                        return item;
+                    }
+                    const url = (0, node_path_1.join)(rootPath, item.url) + '.html';
+                    return {
+                        ...item,
+                        url: skipHtmlExtension ? (0, utils_1.shortLink)(url) : url
+                    };
+                });
                 return state;
             });
         });

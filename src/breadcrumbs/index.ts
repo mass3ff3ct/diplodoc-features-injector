@@ -3,7 +3,7 @@ import {join} from 'node:path'
 import type {BaseConfig, BaseProgram, IExtension} from '@diplodoc/cli/lib/program'
 import type {Toc, TocItem} from '@diplodoc/cli/lib/toc'
 import {getHooks as getBaseHooks} from '@diplodoc/cli/lib/program'
-import {setExt, isExternalHref} from '@diplodoc/cli/lib/utils'
+import {setExt, isExternalHref, shortLink} from '@diplodoc/cli/lib/utils'
 
 import {getBuildHooks, getEntryHooks} from '@diplodoc/cli'
 
@@ -48,11 +48,20 @@ export class Extension implements IExtension {
             }
 
             const tocService = run.toc
-
             const breadcrumbCacheMap = new Map<string, Map<string, BreadcrumbItem[]>>()
 
+            let skipHtmlExtension = false
+
+            if ("skipHtmlExtension" in program.config && program.config.skipHtmlExtension !== false) {
+                skipHtmlExtension = true
+            }
+
+            if ("cleanLinks" in program.config && program.config.cleanLinks !== false) {
+                skipHtmlExtension = true
+            }
+
             getEntryHooks(run.entry).State.tap('Breadcrumbs', (state) => {
-                const toc = tocService.for(state.router.pathname)
+                const toc = tocService.for(state.data.meta.vcsPath)
 
                 if (!toc.items || toc.items.length === 0) {
                     return state
@@ -67,12 +76,18 @@ export class Extension implements IExtension {
                     return state
                 }
 
-                state.data.breadcrumbs = breadcrumbsMap.get(pathname)!
-                    .map(item =>
-                        item.url && !isExternalHref(item.url)
-                            ? {...item, url: join(rootPath, item.url) + '.html'}
-                            : item
-                    )
+                state.data.breadcrumbs = breadcrumbsMap.get(pathname)!.map(item => {
+                    if (!item.url || isExternalHref(item.url)) {
+                        return item
+                    }
+
+                    const url = join(rootPath, item.url) + '.html'
+
+                    return {
+                        ...item,
+                        url: skipHtmlExtension ? shortLink(url) : url
+                    }
+                })
 
                 return state
             })

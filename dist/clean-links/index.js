@@ -7,8 +7,6 @@ const toc_1 = require("@diplodoc/cli/lib/toc");
 const cli_1 = require("@diplodoc/cli");
 const utils_1 = require("@diplodoc/cli/lib/utils");
 const node_path_1 = require("node:path");
-const cleanExtExp = /\.html/;
-const cleanIndexExp = /\/index/;
 const htmlLinkExp = /href="(.*?)"/;
 class Extension {
     apply(program) {
@@ -16,10 +14,8 @@ class Extension {
             if (!config.cleanLinks) {
                 return config;
             }
-            (0, node_assert_1.ok)((config.cleanLinks === true || "object" === typeof config.cleanLinks), 'cleanLinks must be object or true');
             const options = Object.assign({}, { ext: true, index: true }, config.cleanLinks);
-            (0, node_assert_1.ok)("boolean" === typeof options.ext, 'breadcrumbs.tocAsRoot must be boolean type');
-            (0, node_assert_1.ok)("boolean" === typeof options.index, 'breadcrumbs.appendLabeled must be boolean type');
+            (0, node_assert_1.ok)("boolean" === typeof config.cleanLinks, 'cleanLinks must be boolean type');
             config.cleanLinks = options;
             return config;
         });
@@ -27,27 +23,26 @@ class Extension {
             if (!program.config.cleanLinks) {
                 return;
             }
-            const options = program.config.cleanLinks;
             (0, toc_1.getHooks)(run.toc).Dump.tapPromise('CleanLinks', async (vfile) => {
                 await run.toc.walkItems([vfile.data], async (item) => {
                     if (item.href && !(0, utils_1.isExternalHref)(item.href)) {
-                        item.href = cleanLink(item.href, program.config.cleanLinks);
+                        item.href = (0, utils_1.shortLink)(item.href);
                     }
                     return item;
                 });
             });
             (0, cli_1.getEntryHooks)(run.entry).State.tap('CleanLinks', (state) => {
                 if (state.data.html) {
-                    state.data.html = cleanHtmlLinks(state.data.html, options);
+                    state.data.html = cleanHtmlLinks(state.data.html);
                 }
                 if (state.data.breadcrumbs) {
                     state.data.breadcrumbs.forEach(breadcrumbItem => {
                         if (breadcrumbItem.url) {
-                            breadcrumbItem.url = cleanLink(breadcrumbItem.url, options);
+                            breadcrumbItem.url = (0, utils_1.shortLink)(breadcrumbItem.url);
                         }
                     });
                 }
-                state.router.pathname = cleanLink(state.router.pathname, options);
+                state.router.pathname = (0, utils_1.shortLink)(state.router.pathname);
                 return state;
             });
             (0, cli_1.getEntryHooks)(run.entry).Page.tap('CleanLinks', (template) => {
@@ -70,7 +65,7 @@ class Extension {
                 if ("indexer" in provider) {
                     const indexer = provider.indexer;
                     const ownAddMethod = indexer.add;
-                    indexer.add = async (lang, url, data) => ownAddMethod.call(indexer, lang, cleanLink(url, options), data);
+                    indexer.add = async (lang, url, data) => ownAddMethod.call(indexer, lang, (0, utils_1.shortLink)(url), data);
                 }
                 return provider;
             });
@@ -90,15 +85,6 @@ class Extension {
     }
 }
 exports.Extension = Extension;
-function cleanHtmlLinks(html, options) {
-    return html.replace(htmlLinkExp, (match, href) => match.replace(href, cleanLink(href, options)));
-}
-function cleanLink(url, options) {
-    if (options.ext) {
-        url = url.replace(cleanExtExp, '');
-    }
-    if (options.index) {
-        url = url.replace(cleanIndexExp, '');
-    }
-    return url;
+function cleanHtmlLinks(html) {
+    return html.replace(htmlLinkExp, (match, href) => match.replace(href, (0, utils_1.shortLink)(href)));
 }
